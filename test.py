@@ -5,11 +5,15 @@ import mailbox
 from emailreview import *
 
 def get_message_references(msg):
-	# TODO: handle empty references
 	# TODO: handle spaces in message IDs
 	refs_str = flatten_header_field(msg.get("references", ""))
-	ref_ids = refs_str.split(" ")
-	return [ref_id.strip() for ref_id in ref_ids]
+	ref_ids = []
+	for ref_id in refs_str.split(" "):
+		ref_id = ref_id.strip()
+		if ref_id == "":
+			continue
+		ref_ids.append(ref_id)
+	return ref_ids
 
 def print_review(mbox, msg_id):
 	messages_by_id = {}
