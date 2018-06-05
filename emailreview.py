@@ -65,7 +65,6 @@ class Quote:
 		self.parent_index = parent_index
 
 	def __repr__(self):
-		# return "\n".join(self.lines)
 		return "[quote at " + str(self.parent_index) + "-" + str(self.parent_index + len(self.lines)) + " " + "\n".join(self.lines) + "]"
 
 def parse_reply(msg, in_reply_to):
