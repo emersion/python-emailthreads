@@ -75,13 +75,19 @@ class Text:
 		return "[text " + "\n".join(self.lines) + "]"
 
 class Quote:
-	def __init__(self, index, lines, parent_index):
+	def __init__(self, index, lines, parent_index=None):
 		self.index = index
 		self.lines = lines
 		self.parent_index = parent_index
 
 	def __repr__(self):
-		return "[quote at " + str(self.parent_index) + "-" + str(self.parent_index + len(self.lines)) + " " + "\n".join(self.lines) + "]"
+		s = "["
+		if self.parent_index is not None:
+			s += "quote at " + str(self.parent_index) + "-" + str(self.parent_index + len(self.lines))
+		else:
+			s += "unknown quote"
+
+		return s + " " + "\n".join(self.lines) + "]"
 
 def parse_reply(msg, in_reply_to):
 	text = get_text(msg)
@@ -121,11 +127,8 @@ def parse_reply(msg, in_reply_to):
 					indices = list(filter(lambda i: i > last_quote.parent_index, indices))
 				if indices == []:
 					# Quote that isn't in the In-Reply-To message
-					if last_text is None:
-						last_text = Text(0) # TODO
-						blocks.append(last_text)
-					for l in quoted_block:
-						last_text.lines.append("> " + l)
+					last_quote = Quote(i, quoted_block)
+					blocks.append(last_quote)
 				elif len(indices) == 1:
 					quote_index = indices[0]
 					last_quote = Quote(i, quoted_block, quote_index)
@@ -139,6 +142,30 @@ def parse_reply(msg, in_reply_to):
 			block.append(line)
 
 	return blocks
+
+def merge_blocks(blocks):
+	merged = []
+
+	last_block = None
+	for block in blocks:
+		merge = False
+		if isinstance(block, Text):
+			merge = isinstance(last_block, Text)
+		elif isinstance(block, Quote):
+			if block.parent_index is None:
+				# Unknown quote
+				merge = isinstance(last_block, Text)
+
+		if merge:
+			lines = block.lines
+			if isinstance(last_block, Text) and isinstance(block, Quote):
+				lines = ["> " + l for l in lines]
+			last_block.lines += lines
+		else:
+			merged.append(block)
+			last_block = block
+
+	return merged
 
 class Review:
 	def __init__(self, lines):
@@ -207,6 +234,8 @@ def parse(msg, refs=[]):
 
 	blocks = parse_reply(msg, in_reply_to)
 	# print("\n".join([str(block) for block in blocks]))
+	blocks = merge_blocks(blocks)
+	# print("\n".join([str(block) for block in blocks]))
 
 	review = parse(in_reply_to, refs)
 
@@ -215,6 +244,7 @@ def parse(msg, refs=[]):
 		if isinstance(block, Text):
 			c = None
 			if last_quote is not None:
+				assert(last_quote.parent_index is not None)
 				parent = review.comment_at(in_reply_to, last_quote.index)
 				if parent is not None:
 					c = Comment(msg, block.index, block.lines, parent.index, parent)
