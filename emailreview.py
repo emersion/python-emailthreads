@@ -24,9 +24,6 @@ def get_text(msg):
 	text_part = get_text_part(msg)
 	text = text_part.get_payload(decode=True).decode('utf-8')
 
-	# TODO: trim "On …, … wrote:"
-	# This should probably be done after parse_reply
-	# text = re.sub("(\n|^)On [^\n]+(\n[^\n]+)? wrote\W*\n+>", "\n>", text, flags=re.IGNORECASE)
 	# TODO: trim retarded mailing list footers
 	# This should probably happen in parse_reply, before trying to match quotes
 
@@ -125,7 +122,7 @@ def parse_blocks(msg):
 
 	return blocks
 
-def parse_reply(blocks, in_reply_to):
+def match_quotes(blocks, in_reply_to):
 	in_reply_to_text = get_text(in_reply_to)
 	in_reply_to_lines = [l.strip() for l in in_reply_to_text.splitlines()]
 
@@ -145,6 +142,19 @@ def parse_reply(blocks, in_reply_to):
 			else:
 				# TODO: ranking
 				raise Exception("Warning: multiple matches, this isn't supported yet")
+
+	return blocks
+
+def trim_noisy_text(blocks):
+	if len(blocks) < 2:
+		return blocks
+
+	# Trim "On …, … wrote:"
+	first = blocks[0]
+	second = blocks[1]
+	if isinstance(first, Text) and first.lines != [] and isinstance(second, Quote):
+		if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[0].rstrip(" :").endswith(" wrote"):
+			blocks = blocks[1:]
 
 	return blocks
 
@@ -240,7 +250,8 @@ def parse(msg, refs=[]):
 		return Review(text_lines)
 
 	blocks = parse_blocks(msg)
-	blocks = parse_reply(blocks, in_reply_to)
+	blocks = match_quotes(blocks, in_reply_to)
+	blocks = trim_noisy_text(blocks)
 	# print("\n".join([str(block) for block in blocks]))
 	blocks = merge_blocks(blocks)
 
