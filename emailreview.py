@@ -25,11 +25,27 @@ def get_text(msg):
 	text_part = get_text_part(msg)
 	return text_part.get_payload(decode=True).decode('utf-8')
 
-def find_sub_list(l, sl):
+def match_block(ref_block, block):
+	ref_block = list(ref_block)
+
+	for line in block:
+		if len(ref_block) == 0:
+			return False
+
+		if line == ref_block[0]:
+			ref_block = ref_block[1:]
+		elif ref_block[0].startswith(line):
+			ref_block[0] = ref_block[0][len(line):].strip()
+		else:
+			return False
+
+	return True
+
+def find_block(ref_block, block):
+	# TODO: optimize this
 	indices = []
-	for i in range(len(l)):
-		# TODO: optimize this
-		if l[i:i + len(sl)] == sl:
+	for i in range(len(ref_block)):
+		if match_block(ref_block[i:], block):
 			indices.append(i)
 	return indices
 
@@ -100,7 +116,7 @@ def parse_reply(msg, in_reply_to):
 		else:
 			if quoted_block != []:
 				quoted_block = trim_empty_lines(quoted_block)
-				indices = find_sub_list(in_reply_to_lines, quoted_block)
+				indices = find_block(in_reply_to_lines, quoted_block)
 				if last_quote is not None:
 					indices = list(filter(lambda i: i > last_quote.parent_index, indices))
 				if indices == []:
@@ -116,7 +132,7 @@ def parse_reply(msg, in_reply_to):
 					blocks.append(last_quote)
 				else:
 					# TODO: ranking
-					raise Error("Warning: multiple matches, this isn't supported yet")
+					raise Exception("Warning: multiple matches, this isn't supported yet")
 
 				quoted_block = []
 
@@ -129,9 +145,9 @@ class Review:
 		self.lines = lines
 		self.comments = []
 
-	def comment_at(self, index):
+	def comment_at(self, msg, index):
 		for c in self.comments:
-			if c.index is not None and index >= c.index and index < c.index + len(c.lines):
+			if c.source_msg == msg and index >= c.source_index and index < c.source_index + len(c.lines):
 				return c
 		return None
 
@@ -152,24 +168,29 @@ class Review:
 			repr_lines.append(line)
 
 			for c in comments_by_line.get(i, []):
-				repr_lines.append("[inline comment by " + c.msg["from"] + " at " + c.msg["date"] + "]")
+				repr_lines.append("[inline comment by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
 				for l in c.lines:
 					repr_lines.append("| " + l)
 
 		for c in standalone_comments:
 			repr_lines.append("")
-			repr_lines.append("[standalone comment by " + c.msg["from"] + " at " + c.msg["date"] + "]")
+			repr_lines.append("[standalone comment by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
 			for l in c.lines:
 				repr_lines.append("| " + l)
 
 		return "\n".join(repr_lines)
 
 class Comment:
-	def __init__(self, msg, lines, index=None, parent=None):
-		self.msg = msg
+	def __init__(self, source_msg, source_index, lines, index=None, parent=None):
+		self.source_msg = source_msg
+		self.source_index = source_index
 		self.lines = lines
 		self.index = index
 		self.parent = parent
+		self.children = []
+
+		if parent is not None:
+			parent.children.append(self)
 
 	def __repr__(self):
 		return "[comment at " + str(self.index) + " " + "\n".join(self.lines) + "]"
@@ -194,12 +215,15 @@ def parse(msg, refs=[]):
 		if isinstance(block, Text):
 			c = None
 			if last_quote is not None:
-				# TODO: find parent comment, if any
-				i = last_quote.parent_index + len(last_quote.lines) - 1
-				c = Comment(msg, block.lines, i, None)
+				parent = review.comment_at(in_reply_to, last_quote.index)
+				if parent is not None:
+					c = Comment(msg, block.index, block.lines, parent.index, parent)
+				else:
+					i = last_quote.parent_index + len(last_quote.lines) - 1
+					c = Comment(msg, block.index, block.lines, i)
 				last_quote = None
 			else:
-				c = Comment(msg, block.lines)
+				c = Comment(msg, block.index, block.lines)
 			review.comments.append(c)
 		elif isinstance(block, Quote):
 			last_quote = block
