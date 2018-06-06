@@ -1,4 +1,5 @@
 import mailbox
+import re
 import sys
 
 def get_message_by_id(msgs, msg_id):
@@ -20,10 +21,16 @@ def get_text_part(msg):
 	return None
 
 def get_text(msg):
-	# TODO: remove "On …, … wrote:"
-	# TODO: remove retarded mailing list footers
 	text_part = get_text_part(msg)
-	return text_part.get_payload(decode=True).decode('utf-8')
+	text = text_part.get_payload(decode=True).decode('utf-8')
+
+	# TODO: trim "On …, … wrote:"
+	# This should probably be done after parse_reply
+	# text = re.sub("(\n|^)On [^\n]+(\n[^\n]+)? wrote\W*\n+>", "\n>", text, flags=re.IGNORECASE)
+	# TODO: trim retarded mailing list footers
+	# This should probably happen in parse_reply, before trying to match quotes
+
+	return text
 
 def match_block(ref_block, block):
 	ref_block = list(ref_block)
@@ -94,15 +101,18 @@ def parse_reply(msg, in_reply_to):
 	text_lines = text.splitlines()
 
 	in_reply_to_text = get_text(in_reply_to)
-	# print(in_reply_to_text)
 	in_reply_to_lines = [l.strip() for l in in_reply_to_text.splitlines()]
 
 	blocks = []
+
+	# TODO: only parse quotes here, don't try to match them. This will allow to
+	# cleanup stuff before trying to match
 
 	block = []
 	quoted_block = []
 	last_text = None
 	last_quote = None
+	last_quote_index = -1
 	for (i, line) in enumerate(text_lines):
 		line = line.strip()
 
@@ -123,8 +133,7 @@ def parse_reply(msg, in_reply_to):
 			if quoted_block != []:
 				quoted_block = trim_empty_lines(quoted_block)
 				indices = find_block(in_reply_to_lines, quoted_block)
-				if last_quote is not None:
-					indices = list(filter(lambda i: i > last_quote.parent_index, indices))
+				indices = list(filter(lambda i: i > last_quote_index, indices))
 				if indices == []:
 					# Quote that isn't in the In-Reply-To message
 					last_quote = Quote(i, quoted_block)
@@ -132,6 +141,7 @@ def parse_reply(msg, in_reply_to):
 				elif len(indices) == 1:
 					quote_index = indices[0]
 					last_quote = Quote(i, quoted_block, quote_index)
+					last_quote_index = quote_index
 					blocks.append(last_quote)
 				else:
 					# TODO: ranking
@@ -142,6 +152,10 @@ def parse_reply(msg, in_reply_to):
 			block.append(line)
 
 	return blocks
+
+def quote_to_text(quote):
+	lines = ["> " + l for l in quote.lines]
+	return Text(quote.index, lines)
 
 def merge_blocks(blocks):
 	merged = []
@@ -155,13 +169,11 @@ def merge_blocks(blocks):
 			if block.parent_index is None:
 				# Unknown quote
 				merge = isinstance(last_block, Text)
+				block = quote_to_text(block)
 
 		if merge:
-			lines = block.lines
-			if isinstance(last_block, Text) and isinstance(block, Quote):
-				lines = ["> " + l for l in lines]
-			last_block.lines += lines
-		else:
+			last_block.lines += block.lines
+		elif block.lines != []:
 			merged.append(block)
 			last_block = block
 
@@ -233,7 +245,6 @@ def parse(msg, refs=[]):
 		return Review(text_lines)
 
 	blocks = parse_reply(msg, in_reply_to)
-	# print("\n".join([str(block) for block in blocks]))
 	blocks = merge_blocks(blocks)
 	# print("\n".join([str(block) for block in blocks]))
 
