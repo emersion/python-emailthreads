@@ -22,12 +22,7 @@ def get_text_part(msg):
 
 def get_text(msg):
 	text_part = get_text_part(msg)
-	text = text_part.get_payload(decode=True).decode('utf-8')
-
-	# TODO: trim retarded mailing list footers
-	# This should probably happen in parse_reply, before trying to match quotes
-
-	return text
+	return text_part.get_payload(decode=True).decode('utf-8')
 
 def match_block(ref_block, block):
 	ref_block = list(ref_block)
@@ -149,12 +144,32 @@ def trim_noisy_text(blocks):
 	if len(blocks) < 2:
 		return blocks
 
-	# Trim "On …, … wrote:"
+	# Trim "On …, … wrote:" headers
+	# TODO: support more variations of these
+	# TODO: support text comments before this header
 	first = blocks[0]
 	second = blocks[1]
 	if isinstance(first, Text) and first.lines != [] and isinstance(second, Quote):
 		if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[0].rstrip(" :").endswith(" wrote"):
 			blocks = blocks[1:]
+
+	return blocks
+
+def trim_quotes_footer(blocks):
+	# Trim retarded mailing list footers
+	# TODO: make this configurable
+	# TODO: only trim for the last quotes
+	for block in blocks:
+		if not isinstance(block, Quote):
+			continue
+
+		try:
+			i = block.lines.index("_______________________________________________")
+			if i >= 0:
+				block.lines = block.lines[:i]
+			# TODO: cleanup empty quotes
+		except ValueError:
+			pass
 
 	return blocks
 
@@ -250,6 +265,7 @@ def parse(msg, refs=[]):
 		return Review(text_lines)
 
 	blocks = parse_blocks(msg)
+	blocks = trim_quotes_footer(blocks)
 	blocks = match_quotes(blocks, in_reply_to)
 	blocks = trim_noisy_text(blocks)
 	# print("\n".join([str(block) for block in blocks]))
