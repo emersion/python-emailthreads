@@ -150,7 +150,7 @@ def trim_noisy_text(blocks):
 	first = blocks[0]
 	second = blocks[1]
 	if isinstance(first, Text) and first.lines != [] and isinstance(second, Quote):
-		if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[0].rstrip(" :").endswith(" wrote"):
+		if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[-1].rstrip(" :").endswith(" wrote"):
 			blocks = blocks[1:]
 
 	return blocks
