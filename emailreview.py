@@ -96,60 +96,55 @@ class Quote:
 
 		return s + " " + "\n".join(self.lines) + "]"
 
-def parse_reply(msg, in_reply_to):
+def parse_blocks(msg):
 	text = get_text(msg)
 	text_lines = text.splitlines()
 
-	in_reply_to_text = get_text(in_reply_to)
-	in_reply_to_lines = [l.strip() for l in in_reply_to_text.splitlines()]
-
 	blocks = []
 
-	# TODO: only parse quotes here, don't try to match them. This will allow to
-	# cleanup stuff before trying to match
-
-	block = []
-	quoted_block = []
-	last_text = None
-	last_quote = None
-	last_quote_index = -1
+	block_lines = []
+	was_quoted = False
 	for (i, line) in enumerate(text_lines):
 		line = line.strip()
 
-		line_quoted = False
-		if line.startswith(">"):
+		line_quoted = line.startswith(">")
+		if line_quoted:
 			line = line[1:].lstrip()
-			line_quoted = True
 
 		if line_quoted:
-			if block != []:
-				block = trim_empty_lines(block)
-				last_text = Text(i, block)
-				blocks.append(last_text)
-				block = []
-
-			quoted_block.append(line)
+			if not was_quoted and block_lines != []:
+				blocks.append(Text(i, block_lines))
+				block_lines = []
 		else:
-			if quoted_block != []:
-				quoted_block = trim_empty_lines(quoted_block)
-				indices = find_block(in_reply_to_lines, quoted_block)
-				indices = list(filter(lambda i: i > last_quote_index, indices))
-				if indices == []:
-					# Quote that isn't in the In-Reply-To message
-					last_quote = Quote(i, quoted_block)
-					blocks.append(last_quote)
-				elif len(indices) == 1:
-					quote_index = indices[0]
-					last_quote = Quote(i, quoted_block, quote_index)
-					last_quote_index = quote_index
-					blocks.append(last_quote)
-				else:
-					# TODO: ranking
-					raise Exception("Warning: multiple matches, this isn't supported yet")
+			if was_quoted and block_lines != []:
+				blocks.append(Quote(i, block_lines))
+				block_lines = []
 
-				quoted_block = []
+		block_lines.append(line)
+		was_quoted = line_quoted
 
-			block.append(line)
+	return blocks
+
+def parse_reply(blocks, in_reply_to):
+	in_reply_to_text = get_text(in_reply_to)
+	in_reply_to_lines = [l.strip() for l in in_reply_to_text.splitlines()]
+
+	last_quote_index = -1
+	for block in blocks:
+		block.lines = trim_empty_lines(block.lines)
+
+		if isinstance(block, Quote):
+			indices = find_block(in_reply_to_lines, block.lines)
+			indices = list(filter(lambda i: i > last_quote_index, indices))
+			if indices == []:
+				# Quote that isn't in the In-Reply-To message
+				pass
+			elif len(indices) == 1:
+				block.parent_index = indices[0]
+				last_quote_index = block.parent_index
+			else:
+				# TODO: ranking
+				raise Exception("Warning: multiple matches, this isn't supported yet")
 
 	return blocks
 
@@ -244,9 +239,10 @@ def parse(msg, refs=[]):
 		text_lines = text.splitlines()
 		return Review(text_lines)
 
-	blocks = parse_reply(msg, in_reply_to)
-	blocks = merge_blocks(blocks)
+	blocks = parse_blocks(msg)
+	blocks = parse_reply(blocks, in_reply_to)
 	# print("\n".join([str(block) for block in blocks]))
+	blocks = merge_blocks(blocks)
 
 	review = parse(in_reply_to, refs)
 
