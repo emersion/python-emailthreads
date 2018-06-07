@@ -194,20 +194,27 @@ def trim_noisy_text(blocks):
 	return blocks
 
 def trim_quotes_footer(blocks):
-	# Trim retarded mailing list footers
-	# TODO: make this configurable
+	# TODO: make footers configurable
 	# TODO: only trim for the last quotes
 	for block in blocks:
-		if not isinstance(block, Quote):
-			continue
-
-		try:
-			i = block.lines.index("_______________________________________________")
-			if i >= 0:
-				block.lines = block.lines[:i]
-			# TODO: cleanup empty quotes
-		except ValueError:
-			pass
+		if isinstance(block, Quote):
+			# Trim retarded mailing list footers
+			try:
+				i = block.lines.index("_______________________________________________")
+				if i >= 0:
+					block.lines = block.lines[:i]
+				# TODO: cleanup empty quotes
+			except ValueError:
+				pass
+		else:
+			# Trim mailing list scrubbing attachments
+			try:
+				i = block.lines.index("-------------- next part --------------")
+				if i >= 0:
+					block.lines = block.lines[:i]
+				# TODO: cleanup empty quotes
+			except ValueError:
+				pass
 
 	return blocks
 

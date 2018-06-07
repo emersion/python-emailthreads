@@ -38,8 +38,8 @@ mbox_path = "/home/simon/tmp/wayland-devel/2018.mbox"
 # mbox_path = "/home/simon/tmp/wayland-devel/2018-May.txt"
 # msg_id = "<ifhnVLylmcR__mKkQ0yb6e9VU8t-c1zYPYZFbhAUpnxZl8QJio1k4hp4Yv3LqPkhjV1389yNgIDdNwxDGyj5iW1ahatsMoCcEiR75UwnmKY=@emersion.fr>" # Direct reply
 # msg_id = "<20180529171002.7a2d3706@eldfell>" # Direct reply
-msg_id = "<1527683902.2337.10.camel@nxp.com>" # Reply of reply
-# msg_id = "<20180531153835.6ad9e559@eldfell>" # Reply of reply of reply
+# msg_id = "<1527683902.2337.10.camel@nxp.com>" # Reply of reply
+msg_id = "<20180531153835.6ad9e559@eldfell>" # Reply of reply of reply
 
 mbox = mailbox.mbox(mbox_path)
 print_thread(mbox, msg_id)
