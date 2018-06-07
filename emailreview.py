@@ -1,6 +1,6 @@
-import mailbox
 import re
 import sys
+from email.message import EmailMessage
 
 def get_message_by_id(msgs, msg_id):
 	# TODO: handle weird brackets stuff
@@ -79,18 +79,29 @@ def trim_empty_lines(block):
 
 	return block
 
+def lines_as_list(lines):
+	if isinstance(lines, list):
+		return lines
+	elif isinstance(lines, str):
+		return lines.split("\n")
+	else:
+		return list(lines)
+
 class Text:
 	def __init__(self, region, lines=[]):
 		self.region = region
-		self.lines = lines
+		self.lines = lines_as_list(lines)
 
 	def __repr__(self):
 		return "[text " + "\n".join(self.lines) + "]"
 
+	def __eq__(self, other):
+		return self.region == other.region and self.lines == other.lines
+
 class Quote:
 	def __init__(self, region, lines, parent_region=None):
 		self.region = region
-		self.lines = lines
+		self.lines = lines_as_list(lines)
 		self.parent_region = parent_region
 
 	def __repr__(self):
@@ -101,6 +112,9 @@ class Quote:
 			s += "unknown quote"
 
 		return s + " " + "\n".join(self.lines) + "]"
+
+	def __eq__(self, other):
+		return self.region == other.region and self.lines == other.lines and self.parent_region == other.parent_region
 
 def parse_blocks(msg):
 	text = get_text(msg)
@@ -129,6 +143,13 @@ def parse_blocks(msg):
 
 		block_lines.append(line)
 		was_quoted = line_quoted
+
+	if block_lines != []:
+		reg = (block_start, len(text_lines))
+		if was_quoted:
+			blocks.append(Quote(reg, block_lines))
+		else:
+			blocks.append(Text(reg, block_lines))
 
 	return blocks
 
@@ -286,12 +307,6 @@ def parse(msg, refs=[]):
 	blocks = match_quotes(blocks, in_reply_to)
 	blocks = trim_noisy_text(blocks)
 	# print("\n".join([str(block) for block in blocks]))
-	print("")
-	for block in blocks:
-		if isinstance(block, Quote):
-			print(block.region, block.parent_region, block.lines[0])
-		else:
-			print(block.region, block.lines[0])
 	blocks = merge_blocks(blocks)
 
 	review = parse(in_reply_to, refs)
