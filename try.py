@@ -15,7 +15,7 @@ def get_message_references(msg):
 		ref_ids.append(ref_id)
 	return ref_ids
 
-def print_review(mbox, msg_id):
+def print_thread(mbox, msg_id):
 	messages_by_id = {}
 	for msg in mbox:
 		messages_by_id[msg["message-id"]] = msg
@@ -29,17 +29,17 @@ def print_review(mbox, msg_id):
 			refs.append(ref)
 		else:
 			print("Warning: missing reference " + ref_id)
-	review = parse(msg, refs)
-	print(review)
+	thread = parse(msg, refs)
+	print(thread)
 
 # TODO: don't hardcode those
 # mbox_path = "/home/simon/tmp/wayland-devel/all.mbox"
 mbox_path = "/home/simon/tmp/wayland-devel/2018.mbox"
 # mbox_path = "/home/simon/tmp/wayland-devel/2018-May.txt"
 # msg_id = "<ifhnVLylmcR__mKkQ0yb6e9VU8t-c1zYPYZFbhAUpnxZl8QJio1k4hp4Yv3LqPkhjV1389yNgIDdNwxDGyj5iW1ahatsMoCcEiR75UwnmKY=@emersion.fr>" # Direct reply
-msg_id = "<20180529171002.7a2d3706@eldfell>" # Direct reply
-# msg_id = "<1527683902.2337.10.camel@nxp.com>" # Reply of reply
+# msg_id = "<20180529171002.7a2d3706@eldfell>" # Direct reply
+msg_id = "<1527683902.2337.10.camel@nxp.com>" # Reply of reply
 # msg_id = "<20180531153835.6ad9e559@eldfell>" # Reply of reply of reply
 
 mbox = mailbox.mbox(mbox_path)
-print_review(mbox, msg_id)
+print_thread(mbox, msg_id)

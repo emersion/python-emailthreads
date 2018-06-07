@@ -237,60 +237,56 @@ def merge_blocks(blocks):
 
 	return merged
 
-class Review:
-	def __init__(self, lines):
-		self.lines = lines
-		self.comments = []
+def quote_str(s):
+	lines = s.split("\n")
+	lines = ["| " + l for l in lines]
+	return "\n".join(lines)
 
-	def comment_at(self, msg, index):
-		for c in self.comments:
-			if c.source_msg == msg and index >= c.source_region[0] and index < c.source_region[1]:
-				return c
+class Thread:
+	def __init__(self, lines, source_msg, source_region, index=None):
+		self.source_msg = source_msg
+		self.source_region = source_region
+		self.lines = lines_as_list(lines)
+		self.index = index
+		self.children = []
+
+	def at(self, msg, index):
+		if self.source_msg == msg and index >= self.source_region[0] and index < self.source_region[1]:
+			return self
+
+		for c in self.children:
+			cc = c.at(msg, index)
+			if cc is not None:
+				return cc
 		return None
 
 	def __repr__(self):
-		comments_by_line = {}
-		standalone_comments = []
-		for c in self.comments:
-			if c.index is not None:
-				if c.index not in comments_by_line:
-					comments_by_line[c.index] = [c]
+		children_by_line = {}
+		standalone_children = []
+		for c in self.children:
+			if c.index is not None and c.index < len(self.lines):
+				if c.index not in children_by_line:
+					children_by_line[c.index] = [c]
 				else:
-					comments_by_line[c.index].append(c)
+					children_by_line[c.index].append(c)
 			else:
-				standalone_comments.append(c)
+				standalone_children.append(c)
 
 		repr_lines = []
 		for (i, line) in enumerate(self.lines):
 			repr_lines.append(line)
 
-			for c in comments_by_line.get(i, []):
-				repr_lines.append("[inline comment by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
-				for l in c.lines:
-					repr_lines.append("| " + l)
+			for c in children_by_line.get(i, []):
+				repr_lines.append("[inline thread by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
+				s = quote_str(str(c))
+				repr_lines.append(s)
 
-		for c in standalone_comments:
-			repr_lines.append("")
-			repr_lines.append("[standalone comment by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
-			for l in c.lines:
-				repr_lines.append("| " + l)
+		for c in standalone_children:
+			repr_lines.append("[standalone thread by " + c.source_msg["from"] + " at " + c.source_msg["date"] + "]")
+			s = quote_str(str(c))
+			repr_lines.append(s)
 
 		return "\n".join(repr_lines)
-
-class Comment:
-	def __init__(self, source_msg, source_region, lines, index=None, parent=None):
-		self.source_msg = source_msg
-		self.source_region = source_region
-		self.lines = lines
-		self.index = index
-		self.parent = parent
-		self.children = []
-
-		if parent is not None:
-			parent.children.append(self)
-
-	def __repr__(self):
-		return "[comment at " + str(self.index) + " " + "\n".join(self.lines) + "]"
 
 def parse(msg, refs=[]):
 	# For some reason Python strips "Re:" prefixes
@@ -300,7 +296,7 @@ def parse(msg, refs=[]):
 	if in_reply_to is None or flatten_header_field(in_reply_to["subject"]) != subject:
 		text = get_text(msg)
 		text_lines = text.splitlines()
-		return Review(text_lines)
+		return Thread(text_lines, msg, (0, len(text_lines)))
 
 	blocks = parse_blocks(msg)
 	blocks = trim_quotes_footer(blocks)
@@ -309,8 +305,7 @@ def parse(msg, refs=[]):
 	# print("\n".join([str(block) for block in blocks]))
 	blocks = merge_blocks(blocks)
 
-	review = parse(in_reply_to, refs)
-	is_first_reply = review.comments == []
+	thread = parse(in_reply_to, refs)
 
 	last_quote = None
 	for block in blocks:
@@ -319,22 +314,20 @@ def parse(msg, refs=[]):
 			if last_quote is not None:
 				assert(last_quote.parent_region is not None)
 				i = last_quote.parent_region[1] - 1
-				if is_first_reply:
-					c = Comment(msg, block.region, block.lines, i)
+				parent = thread.at(in_reply_to, i)
+				if parent is not None:
+					c = Thread(block.lines, msg, block.region, i - parent.source_region[0])
+					parent.children.append(c)
 				else:
-					# TODO: split original comment?
-					parent = review.comment_at(in_reply_to, i)
-					if parent is not None:
-						c = Comment(msg, block.region, block.lines, parent.index, parent)
-					else:
-						# TODO: include previous quote, if any
-						c = Comment(msg, block.region, block.lines)
+					# TODO: include previous quote, if any
+					c = Thread(block.lines, msg, block.region)
+					thread.children.append(c)
 				last_quote = None
 			else:
 				# TODO: include previous quote, if any
-				c = Comment(msg, block.region, block.lines)
-			review.comments.append(c)
+				c = Thread(block.lines, msg, block.region)
+				thread.children.append(c)
 		elif isinstance(block, Quote):
 			last_quote = block
 
-	return review
+	return thread
