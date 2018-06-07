@@ -20,33 +20,47 @@ def get_text_part(msg):
 			return part
 	return None
 
+def normalize_whitespace(text):
+	# TODO: more of these
+	# No-break space
+	return text.replace('\xa0', ' ')
+
 def get_text(msg):
 	text_part = get_text_part(msg)
-	return text_part.get_payload(decode=True).decode('utf-8')
+	text = text_part.get_payload(decode=True).decode('utf-8')
+	text = normalize_whitespace(text)
+	return text
 
 def match_block(ref_block, block):
 	ref_block = list(ref_block)
+	ref_block_len = len(ref_block)
 
 	for line in block:
 		if len(ref_block) == 0:
-			return False
+			return -1
+
+		# TODO: match level of quotes
+		# TODO: don't strip again when splitting line
+		line = line.lstrip("> ").lstrip()
+		ref_block[0] = ref_block[0].lstrip("> ").lstrip()
 
 		if line == ref_block[0]:
 			ref_block = ref_block[1:]
 		elif ref_block[0].startswith(line):
 			ref_block[0] = ref_block[0][len(line):].strip()
 		else:
-			return False
+			return -1
 
-	return True
+	return ref_block_len - len(ref_block)
 
 def find_block(ref_block, block):
 	# TODO: optimize this
-	indices = []
+	regions = []
 	for i in range(len(ref_block)):
-		if match_block(ref_block[i:], block):
-			indices.append(i)
-	return indices
+		match_len = match_block(ref_block[i:], block)
+		if match_len >= 0:
+			regions.append((i, i + match_len))
+	return regions
 
 def trim_empty_lines(block):
 	start = 0
@@ -66,23 +80,23 @@ def trim_empty_lines(block):
 	return block
 
 class Text:
-	def __init__(self, index, lines=[]):
-		self.index = index
+	def __init__(self, region, lines=[]):
+		self.region = region
 		self.lines = lines
 
 	def __repr__(self):
 		return "[text " + "\n".join(self.lines) + "]"
 
 class Quote:
-	def __init__(self, index, lines, parent_index=None):
-		self.index = index
+	def __init__(self, region, lines, parent_region=None):
+		self.region = region
 		self.lines = lines
-		self.parent_index = parent_index
+		self.parent_region = parent_region
 
 	def __repr__(self):
 		s = "["
-		if self.parent_index is not None:
-			s += "quote at " + str(self.parent_index) + "-" + str(self.parent_index + len(self.lines))
+		if self.parent_region is not None:
+			s += "quote at " + str(self.parent_region[0]) + "-" + str(self.parent_region[1] - 1)
 		else:
 			s += "unknown quote"
 
@@ -94,6 +108,7 @@ def parse_blocks(msg):
 
 	blocks = []
 
+	block_start = 0
 	block_lines = []
 	was_quoted = False
 	for (i, line) in enumerate(text_lines):
@@ -103,14 +118,14 @@ def parse_blocks(msg):
 		if line_quoted:
 			line = line[1:].lstrip()
 
-		if line_quoted:
-			if not was_quoted and block_lines != []:
-				blocks.append(Text(i, block_lines))
-				block_lines = []
-		else:
-			if was_quoted and block_lines != []:
-				blocks.append(Quote(i, block_lines))
-				block_lines = []
+		if line_quoted != was_quoted and block_lines != []:
+			reg = (block_start, i)
+			if was_quoted:
+				blocks.append(Quote(reg, block_lines))
+			else:
+				blocks.append(Text(reg, block_lines))
+			block_start = i
+			block_lines = []
 
 		block_lines.append(line)
 		was_quoted = line_quoted
@@ -126,17 +141,19 @@ def match_quotes(blocks, in_reply_to):
 		block.lines = trim_empty_lines(block.lines)
 
 		if isinstance(block, Quote):
-			indices = find_block(in_reply_to_lines, block.lines)
-			indices = list(filter(lambda i: i > last_quote_index, indices))
-			if indices == []:
+			regions = find_block(in_reply_to_lines, block.lines)
+			regions = list(filter(lambda reg: reg[0] > last_quote_index, regions))
+			if len(regions) > 1:
+				# TODO: ranking
+				print("Warning: multiple matches at " + str(regions))
+				regions = [regions[0]]
+			if regions == []:
 				# Quote that isn't in the In-Reply-To message
 				pass
-			elif len(indices) == 1:
-				block.parent_index = indices[0]
-				last_quote_index = block.parent_index
-			else:
-				# TODO: ranking
-				raise Exception("Warning: multiple matches, this isn't supported yet")
+			elif len(regions) == 1:
+				parent_region = regions[0]
+				block.parent_region = parent_region
+				last_quote_index = parent_region[0]
 
 	return blocks
 
@@ -175,7 +192,7 @@ def trim_quotes_footer(blocks):
 
 def quote_to_text(quote):
 	lines = ["> " + l for l in quote.lines]
-	return Text(quote.index, lines)
+	return Text(quote.region, lines)
 
 def merge_blocks(blocks):
 	merged = []
@@ -186,7 +203,7 @@ def merge_blocks(blocks):
 		if isinstance(block, Text):
 			merge = isinstance(last_block, Text)
 		elif isinstance(block, Quote):
-			if block.parent_index is None:
+			if block.parent_region is None:
 				# Unknown quote
 				merge = isinstance(last_block, Text)
 				block = quote_to_text(block)
@@ -206,7 +223,7 @@ class Review:
 
 	def comment_at(self, msg, index):
 		for c in self.comments:
-			if c.source_msg == msg and index >= c.source_index and index < c.source_index + len(c.lines):
+			if c.source_msg == msg and index >= c.source_region[0] and index < c.source_region[1]:
 				return c
 		return None
 
@@ -240,9 +257,9 @@ class Review:
 		return "\n".join(repr_lines)
 
 class Comment:
-	def __init__(self, source_msg, source_index, lines, index=None, parent=None):
+	def __init__(self, source_msg, source_region, lines, index=None, parent=None):
 		self.source_msg = source_msg
-		self.source_index = source_index
+		self.source_region = source_region
 		self.lines = lines
 		self.index = index
 		self.parent = parent
@@ -269,25 +286,38 @@ def parse(msg, refs=[]):
 	blocks = match_quotes(blocks, in_reply_to)
 	blocks = trim_noisy_text(blocks)
 	# print("\n".join([str(block) for block in blocks]))
+	print("")
+	for block in blocks:
+		if isinstance(block, Quote):
+			print(block.region, block.parent_region, block.lines[0])
+		else:
+			print(block.region, block.lines[0])
 	blocks = merge_blocks(blocks)
 
 	review = parse(in_reply_to, refs)
+	is_first_reply = review.comments == []
 
 	last_quote = None
 	for block in blocks:
 		if isinstance(block, Text):
 			c = None
 			if last_quote is not None:
-				assert(last_quote.parent_index is not None)
-				parent = review.comment_at(in_reply_to, last_quote.index)
-				if parent is not None:
-					c = Comment(msg, block.index, block.lines, parent.index, parent)
+				assert(last_quote.parent_region is not None)
+				i = last_quote.parent_region[1] - 1
+				if is_first_reply:
+					c = Comment(msg, block.region, block.lines, i)
 				else:
-					i = last_quote.parent_index + len(last_quote.lines) - 1
-					c = Comment(msg, block.index, block.lines, i)
+					# TODO: split original comment?
+					parent = review.comment_at(in_reply_to, i)
+					if parent is not None:
+						c = Comment(msg, block.region, block.lines, parent.index, parent)
+					else:
+						# TODO: include previous quote, if any
+						c = Comment(msg, block.region, block.lines)
 				last_quote = None
 			else:
-				c = Comment(msg, block.index, block.lines)
+				# TODO: include previous quote, if any
+				c = Comment(msg, block.region, block.lines)
 			review.comments.append(c)
 		elif isinstance(block, Quote):
 			last_quote = block
