@@ -31,37 +31,6 @@ def get_text(msg):
 	text = normalize_whitespace(text)
 	return text
 
-def match_block(ref_block, block):
-	ref_block = list(ref_block)
-	ref_block_len = len(ref_block)
-
-	for line in block:
-		if len(ref_block) == 0:
-			return -1
-
-		# TODO: match level of quotes
-		# TODO: don't strip again when splitting line
-		line = line.lstrip("> ").lstrip()
-		ref_block[0] = ref_block[0].lstrip("> ").lstrip()
-
-		if line == ref_block[0]:
-			ref_block = ref_block[1:]
-		elif ref_block[0].startswith(line):
-			ref_block[0] = ref_block[0][len(line):].strip()
-		else:
-			return -1
-
-	return ref_block_len - len(ref_block)
-
-def find_block(ref_block, block):
-	# TODO: optimize this
-	regions = []
-	for i in range(len(ref_block)):
-		match_len = match_block(ref_block[i:], block)
-		if match_len >= 0:
-			regions.append((i, i + match_len))
-	return regions
-
 def trim_empty_lines(block):
 	start = 0
 	for (i, l) in enumerate(block):
@@ -152,6 +121,37 @@ def parse_blocks(msg):
 			blocks.append(Text(reg, block_lines))
 
 	return blocks
+
+def match_block(ref_block, block):
+	ref_block = list(ref_block)
+	ref_block_len = len(ref_block)
+
+	for line in block:
+		if len(ref_block) == 0:
+			return -1
+
+		# TODO: match level of quotes
+		# TODO: don't strip again when splitting line
+		line = line.lstrip("> ").lstrip()
+		ref_block[0] = ref_block[0].lstrip("> ").lstrip()
+
+		if line == ref_block[0]:
+			ref_block = ref_block[1:]
+		elif ref_block[0].startswith(line):
+			ref_block[0] = ref_block[0][len(line):].strip()
+		else:
+			return -1
+
+	return ref_block_len - len(ref_block)
+
+def find_block(ref_block, block):
+	# TODO: optimize this
+	regions = []
+	for i in range(len(ref_block)):
+		match_len = match_block(ref_block[i:], block)
+		if match_len >= 0:
+			regions.append((i, i + match_len))
+	return regions
 
 def match_quotes(blocks, in_reply_to):
 	in_reply_to_text = get_text(in_reply_to)
