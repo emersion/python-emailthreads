@@ -9,7 +9,16 @@ def get_message_by_id(msgs, msg_id):
 			return msg
 	return None
 
+def strip_prefix(s, prefix):
+	if s.startswith(prefix):
+		s = s[len(prefix):]
+	return s
+
 def flatten_header_field(value):
+	value = value.strip()
+	# TODO: more of these
+	while value.startswith("Re:"):
+		value = strip_prefix(value, "Re:").strip()
 	lines = value.splitlines()
 	lines = [l.strip() for l in lines]
 	return " ".join(lines)
@@ -122,35 +131,38 @@ def parse_blocks(msg):
 
 	return blocks
 
-def match_block(ref_block, block):
-	ref_block = list(ref_block)
-	ref_block_len = len(ref_block)
+def match_block_at(ref_block, block, index):
+	ref_block = list(ref_block[index - len(block):index])
 
-	for line in block:
-		if len(ref_block) == 0:
-			return -1
+	n_lines = 0
+	for line in reversed(block):
+		if ref_block == []:
+			break
+
+		ref_line = ref_block[-1]
 
 		# TODO: match level of quotes
-		# TODO: don't strip again when splitting line
 		line = line.lstrip("> ").lstrip()
-		ref_block[0] = ref_block[0].lstrip("> ").lstrip()
+		ref_line = ref_line.lstrip("> ").lstrip()
 
-		if line == ref_block[0]:
-			ref_block = ref_block[1:]
-		elif ref_block[0].startswith(line):
-			ref_block[0] = ref_block[0][len(line):].strip()
+		if line == ref_line:
+			ref_block = ref_block[:-1]
+			n_lines += 1
+		elif ref_line.endswith(line):
+			ref_block[-1] = ref_line[len(line):].strip()
 		else:
-			return -1
+			break
 
-	return ref_block_len - len(ref_block)
+	return n_lines
 
-def find_block(ref_block, block):
+def find_block(ref_block, block, start=0):
 	# TODO: optimize this
 	regions = []
-	for i in range(len(ref_block)):
-		match_len = match_block(ref_block[i:], block)
-		if match_len >= 0:
-			regions.append((i, i + match_len))
+	for i in range(start, len(ref_block)):
+		match_len = match_block_at(ref_block, block, i)
+		# TODO: require to match at least a % of the block
+		if match_len > 0:
+			regions.append((i - match_len, i))
 	return regions
 
 def match_quotes(blocks, in_reply_to):
@@ -162,16 +174,15 @@ def match_quotes(blocks, in_reply_to):
 		block.lines = trim_empty_lines(block.lines)
 
 		if isinstance(block, Quote):
-			regions = find_block(in_reply_to_lines, block.lines)
-			regions = list(filter(lambda reg: reg[0] > last_quote_index, regions))
-			if len(regions) > 1:
-				# TODO: ranking
-				print("Warning: multiple matches at " + str(regions))
-				regions = [regions[0]]
+			regions = find_block(in_reply_to_lines, block.lines, last_quote_index)
+			regions = sorted(regions, key=lambda reg: reg[1] - reg[0], reverse=True)
 			if regions == []:
 				# Quote that isn't in the In-Reply-To message
 				pass
-			elif len(regions) == 1:
+			else:
+				if len(regions) > 1:
+					# TODO: ranking
+					print("Warning: multiple matches at " + str(regions))
 				parent_region = regions[0]
 				block.parent_region = parent_region
 				last_quote_index = parent_region[0]

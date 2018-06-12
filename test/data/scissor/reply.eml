@@ -1,0 +1,104 @@
+From: Drew DeVault <sir@example.com>
+Date: Mon, 11 Jun 2018 14:10:17 -0400
+Subject: Re: [PATCH 1/3 todo] Enable changing default permissions for trackers
+References: <20180611161415.27631-1-greg@example.com>
+In-Reply-To: <20180611161415.27631-1-greg@example.com>
+
+
+On 2018-06-11  9:14 AM, Gregory Mullen wrote:
+> +    if result == 0:
+> +        valid.expect(result or "perm_{}_none".format(short) in valid,
+> +                     "{} type permissions are missing".format(short), field="tracker_{}_access".format(short))
+
+80 column limit
+
+> +@tracker.route("/<owner>/<path:name>/configure", methods=["POST"])
+> +@loginrequired
+> +def tracker_configure_POST(owner, name):
+> +    tracker, access = get_tracker(owner, name)
+
+Do you need to verify here that `access` grants the logged-in user
+permission to edit permissions? I think with this code any logged-in
+user could edit any tracker.
+
+> +    if not valid.ok:
+> +        return render_template("tracker-configure.html",
+> +                               tracker=tracker,
+> +                               access_type_list=TicketAccess,
+> +                               **valid.kwargs), 400
+
+Do not align this with the first arg. Prefer:
+
++        return render_template("tracker-configure.html",
++            tracker=tracker, access_type_list=TicketAccess,
++            **valid.kwargs), 400
+
+>  @tracker.route("/<owner>/<path:name>/configure")
+>  @loginrequired
+>  def tracker_configure_GET(owner, name):
+> -%<-
+> +    return render_template("tracker-configure.html",
+> +                           tracker=tracker,
+> +                           access_type_list=TicketAccess)
+
+Same alignment comment here
+
+> +{% macro perm_checkbox(type, perms, name) %}
+> +  {% if type %}
+> +    <input class="form-check-input" type="checkbox" name="perm_{{ name }}_{{ type.name }}"{{ ' checked="checked"' if type in perms }} value="{{type.value}}"> {{type.name}}
+> +  {% else %}
+> +    <input class="form-check-input" type="checkbox" name="perm_{{ name }}_{{ type.name }}"{{ ' checked="checked"' if perms == 0 }} value="{{type.value}}"> {{type.name}}
+> +  {% endif %}
+> +{% endmacro %}
+
+80 column limit. It might also be cleaner to use str.format rather than
+try to splice these strings together with jinja.
+
+> +{% block content %}
+> +<div class="container">
+> +  <div class="row">
+> +    <div class="col-md-8">
+> +      <h2>Configure {{ tracker.name or "Error -- No Tracker" }}</h2>
+
+What's this error about? This doesn't make sense to me.
+
+> +      <form method="POST">
+> +        <div class="form-group {{valid.cls("tracker_name")}}">
+> +          <label for="tracker_name">Name</label>
+> +          <input type="text" name="tracker_name" id="tracker_name" class="form-control" value="{{ tracker.name or "" }}" aria-describedby="tracker_name-help" disabled="disabled" />
+> +          {{ valid.summary("tracker_name") }}
+> +          <p id="tracker_name-help" class="form-text text-muted">Changing tracker name not yet supported.</p>
+
+Don't make implicit promises about the future. Take a look at
+meta.sr.ht's profile edit page and replicate what I put in to tell users
+they can't change their username.
+
+Also, 80 col limit.
+
+> +        </div>
+> +        <div class="form-group {{valid.cls("tracker_desc")}}">
+> +          <label for="tracker_desc">Description</label>
+> +          <textarea name="tracker_desc" id="tracker_desc" class="form-control" value="{{ tracker_desc or "" }}" rows="5" aria-describedby="tracker_desc-help">{{tracker.desc or ""}}</textarea>
+> +          <p id="tracker_desc-help" class="form-text text-muted">Markdown supported</p>
+> +          {{ valid.summary("tracker_desc") }}
+> +        </div>
+
+80 cols
+
+> +          <h4>Default Anonymous Permissions</h4>
+> +          {% for a in access_type_list %}
+> +          <div class="form-check form-check-inline">
+> +            <label class="form-check-label">
+> +              {{ perm_checkbox(a, tracker.default_anonymous_perms, "anon") }}
+> +            </label>
+> +          </div>
+> +          {% endfor %}
+
+I think this for loop can be wrapped up in another macro to de-dupe with
+the other user classes
+
+> diff --git a/todosrht/templates/tracker.html b/todosrht/templates/tracker.html
+> -%<-
+> +      <a class="text-muted" href="/~{{tracker.owner.username}}/{{tracker.name}}/configure">Configure ~{{tracker.owner.username}}/{{ tracker.name }}</a>
+
+80 cols
