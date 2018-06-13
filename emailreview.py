@@ -132,7 +132,8 @@ def parse_blocks(msg):
 	return blocks
 
 def match_block_at(ref_block, block, index):
-	ref_block = list(ref_block[index - len(block):index])
+	start = max(0, index - len(block))
+	ref_block = list(ref_block[start:index])
 
 	n_lines = 0
 	for line in reversed(block):
@@ -142,14 +143,14 @@ def match_block_at(ref_block, block, index):
 		ref_line = ref_block[-1]
 
 		# TODO: match level of quotes
-		line = line.lstrip("> ").lstrip()
-		ref_line = ref_line.lstrip("> ").lstrip()
+		line = line.lstrip("> ").strip()
+		ref_line = ref_line.lstrip("> ").strip()
 
 		if line == ref_line:
 			ref_block = ref_block[:-1]
 			n_lines += 1
 		elif ref_line.endswith(line):
-			ref_block[-1] = ref_line[len(line):].strip()
+			ref_block[-1] = ref_line[:-len(line)].strip()
 		else:
 			break
 
@@ -163,13 +164,14 @@ def find_block(ref_block, block, start=0):
 		# TODO: require to match at least a % of the block
 		if match_len > 0:
 			regions.append((i - match_len, i))
+
 	return regions
 
 def match_quotes(blocks, in_reply_to):
 	in_reply_to_text = get_text(in_reply_to)
 	in_reply_to_lines = [l.strip() for l in in_reply_to_text.splitlines()]
 
-	last_quote_index = -1
+	last_quote_index = 0
 	for block in blocks:
 		block.lines = trim_empty_lines(block.lines)
 
@@ -190,17 +192,22 @@ def match_quotes(blocks, in_reply_to):
 	return blocks
 
 def trim_noisy_text(blocks):
-	if len(blocks) < 2:
-		return blocks
+	# Trim snips
+	# TODO: more of these
+	snips = ["...", "…", "[...]", "[snip]", "snip"]
+	for block in blocks:
+		if isinstance(block, Text) and len(block.lines) == 1 and block.lines[0] in snips:
+			blocks.remove(block)
 
-	# Trim "On …, … wrote:" headers
-	# TODO: support more variations of these
-	# TODO: support text comments before this header
-	first = blocks[0]
-	second = blocks[1]
-	if isinstance(first, Text) and first.lines != [] and isinstance(second, Quote):
-		if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[-1].rstrip(" :").endswith(" wrote"):
-			blocks = blocks[1:]
+	if len(blocks) >= 2:
+		# Trim "On …, … wrote:" headers
+		# TODO: support more variations of these
+		# TODO: support text comments before this header
+		first = blocks[0]
+		second = blocks[1]
+		if isinstance(first, Text) and first.lines != [] and isinstance(second, Quote):
+			if len(first.lines) <= 2 and first.lines[0].startswith("On ") and first.lines[-1].rstrip(" :").endswith(" wrote"):
+				blocks = blocks[1:]
 
 	return blocks
 

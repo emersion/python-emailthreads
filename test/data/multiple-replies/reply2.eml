@@ -1,0 +1,484 @@
+From: marius-cristian.vlad at nxp.com (Marius-cristian Vlad)
+Date: Wed, 30 May 2018 12:38:22 +0000
+Subject: [PATCH wayland-protocols v2] unstable/drm-lease: DRM lease
+ protocol support
+In-Reply-To: <20180529171002.7a2d3706@eldfell>
+References: <20180124190902.7126-1-marius-cristian.vlad@nxp.com>
+ <20180212145151.30210-1-marius-cristian.vlad@nxp.com>
+ <20180529171002.7a2d3706@eldfell>
+Message-ID: <1527683902.2337.10.camel@nxp.com>
+
+On Tue, 2018-05-29 at 17:10 +0300, Pekka Paalanen wrote:
+> On Mon, 12 Feb 2018 16:51:51 +0200
+> Marius Vlad <marius-cristian.vlad at nxp.com> wrote:
+>
+> > Simple protocol extension to manage DRM lease. Based on the work by
+> > Keith
+> > Packard in [1], respectively [2].
+> >
+> > [1] https://cgit.freedesktop.org/mesa/drm/commit/?id=c4171535389d72
+> > e9135c9615cecd07b346fd6d7e
+> > [2] https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.
+> > git/commit/?h=v4.15-rc9&id=62884cd386b876638720ef88374b31a84ca7ee5f
+> >
+> > Signed-off-by: Marius Vlad <marius-cristian.vlad at nxp.com>
+> >
+> > Changes since v1:
+> > - added manager: advertise lease capability and manage the lease
+> > (Daniel Stone)
+> > - add request(s) for adding connector/crtc/plane to behave more
+> > like dmabuf (Daniel Stone)
+> > ---
+> >  Makefile.am                                  |   1 +
+> >  unstable/drm-lease/README                    |   4 +
+> >  unstable/drm-lease/drm-lease-unstable-v1.xml | 150
+> > +++++++++++++++++++++++++++
+> >  3 files changed, 155 insertions(+)
+> >  create mode 100644 unstable/drm-lease/README
+> >  create mode 100644 unstable/drm-lease/drm-lease-unstable-v1.xml
+>
+> Hi Marius,
+>
+> it's great to have someone working on this!
+>
+> I finally got a chance to look at it. Comments are inline as usual.
+> Most
+> of my questions call for an answer in the spec text.
+
+Thanks for taking the time to go over this. I have some minor follow-up
+questions bellow.
+
+>
+> >
+> > diff --git a/Makefile.am b/Makefile.am
+> > index 4b9a901..4f6a874 100644
+> > --- a/Makefile.am
+> > +++ b/Makefile.am
+> > @@ -2,6 +2,7 @@ unstable_protocols =
+> > 				\
+> >  	unstable/pointer-gestures/pointer-gestures-unstable-v1.xml
+> > 		\
+> >  	unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml
+> > 		\
+> >  	unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml
+> > 	\
+> > +	unstable/drm-lease/drm-lease-unstable-v1.xml
+> > 		\
+> >  	unstable/text-input/text-input-unstable-v1.xml
+> > 		\
+> >  	unstable/input-method/input-method-unstable-v1.xml
+> > 	\
+> >  	unstable/xdg-shell/xdg-shell-unstable-v5.xml
+> > 		\
+> > diff --git a/unstable/drm-lease/README b/unstable/drm-lease/README
+> > new file mode 100644
+> > index 0000000..a25600c
+> > --- /dev/null
+> > +++ b/unstable/drm-lease/README
+> > @@ -0,0 +1,4 @@
+> > +Linux DRM lease
+> > +
+> > +Maintainers:
+> > +Marius Vlad <marius-cristian.vlad at nxp.com>
+> > diff --git a/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > b/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > new file mode 100644
+> > index 0000000..907efb0
+> > --- /dev/null
+> > +++ b/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > @@ -0,0 +1,150 @@
+> > +<?xml version="1.0" encoding="UTF-8"?>
+> > +<protocol name="drm_lease_unstable_v1">
+> > +
+> > +  <copyright>
+> > +    Copyright 2018 NXP
+> > +
+> > +    Permission is hereby granted, free of charge, to any person
+> > obtaining a
+> > +    copy of this software and associated documentation files (the
+> > "Software"),
+> > +    to deal in the Software without restriction, including without
+> > limitation
+> > +    the rights to use, copy, modify, merge, publish, distribute,
+> > sublicense,
+> > +    and/or sell copies of the Software, and to permit persons to
+> > whom the
+> > +    Software is furnished to do so, subject to the following
+> > conditions:
+> > +
+> > +    The above copyright notice and this permission notice
+> > (including the next
+> > +    paragraph) shall be included in all copies or substantial
+> > portions of the
+> > +    Software.
+> > +
+> > +    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+> > KIND, EXPRESS OR
+> > +    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+> > MERCHANTABILITY,
+> > +    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO
+> > EVENT SHALL
+> > +    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+> > DAMAGES OR OTHER
+> > +    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+> > OTHERWISE, ARISING
+> > +    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+> > OTHER
+> > +    DEALINGS IN THE SOFTWARE.
+> > +  </copyright>
+> > +
+> > +  <interface name="zwp_kms_lease_manager_v1" version="1">
+> > +    <description summary="lease manager">
+> > +      This interface makes use of DRM lease written by Keith
+> > Packard.
+> > +
+> > +      A DRM master can create another DRM master and ``lease''
+> > resources it has
+> > +      control over to the new DRM master. Once leased, resources
+> > can not be
+> > +      controlled by the owner unless the owner cancels the lease,
+> > or the new
+> > +      DRM master is closed.
+> > +
+> > +      A lease is a contract between the Lessor (DRM master which
+> > has leased out
+> > +      resources to one or more other DRM masters) and a Lessee
+> > +      (DRM master which controls resources leased from another DRM
+> > master). This
+> > +      contract specifies which resources may be controlled by the
+> > Lessee.
+> > +
+> > +      The Lessee can issue modesetting/page-flipping atomic
+> > operations etc.,
+> > +      just like a Lesor using the leased file-descriptor passed by
+> > the Lesor.
+>
+> s/Lesor/Lessor/ twice.
+>
+> > +
+> > +      Besides the leased file-description, an integer is used to
+> > uniquely
+>
+> file-descriptor
+>
+> > +      identify a Lessee within the tree of DRM masters descending
+> > from a single
+> > +      Owner. Once the Lessee has finished with the resources it
+> > had used, the
+> > +      Lessee ID can be used to revoke that lease.
+>
+> I think we should use a Wayland protocol object to represent a
+> tentative
+> Lessee ID so it will never need to be communicated. The only thing a
+> client does with it is pass it back to the compositor. What if a
+> client
+> maliciously or by accident passes someone else's lessee ID? Using a
+> protocol object instead will make such mistake impossible.
+
+Alright, this sounds quite fine.
+
+>
+> > +
+> > +      Warning! The protocol described in this file is experimental
+> > and
+> > +      backward incompatible changes may be made. Backward
+> > compatible changes
+> > +      may be added together with the corresponding interface
+> > version bump.
+> > +      Backward incompatible changes are done by bumping the
+> > version number in
+> > +      the protocol and interface names and resetting the interface
+> > version.
+> > +      Once the protocol is to be declared stable, the 'z' prefix
+> > and the
+> > +      version number in the protocol and interface names are
+> > removed and the
+> > +      interface version number is reset.
+> > +    </description>
+> > +
+> > +    <request name="destroy" type="destructor">
+> > +      <description summary="destroys the manager">
+> > +      Destroys the lease manager object.
+>
+> + This has no effect on any remaining objects created through this
+>   interface.
+>
+> > +      </description>
+> > +    </request>
+> > +
+> > +    <request name="create_lease_req">
+> > +      <description summary="create a temporary object for managing
+> > the lease">
+> > +      Create a lease request object to manage the lease. All
+> > further interaction
+> > +      is achived using this object. Returns a
+> > zwp_kms_lease_request_v1.
+>
+> Create an object for temporarily storing all the KMS resources to be
+> leased.
+>
+> > +      </description>
+> > +      <arg name="params_id" type="new_id"
+> > interface="zwp_kms_lease_request_v1"
+> > +	   summary="the new temporary"/>
+> > +    </request>
+> > +
+> > +  </interface>
+> > +
+> > +  <interface name="zwp_kms_lease_request_v1" version="1">
+> > +  <description summary="lease request object">
+> > +      Typical usage is to create this request lease object using
+> > the
+>
+> a lease request object
+>
+> > +      'zwp_kms_lease_manager_v1', then call 'add_*' requests to
+> > add a connector,
+> > +      crtc (and plane) id.
+> > +
+> > +      At the end, use 'create' request to actually create the
+> > lease. The client
+> > +      is responsible for finding a suitable combination of
+> > connector/crtc/plane
+> > +      to pass. This can be achived by going over all connected
+> > connectors and
+> > +      and determine if a lease can be created.
+>
+> To me this sounds like a client needs to first open a DRM card node,
+> iterate through all the resources (is that even possible if it is not
+> a
+> DRM master?), look at the information and guess which ones the
+> compositor might be willing to lease out, and then through trial and
+> error maybe find something that will actually be accepted.
+
+Indeed, that's how the client demo/example does it now.
+
+>
+> I do not like this plan.
+>
+> It assumes that the client can open a DRM card node itself - this is
+> often not the case. Even display servers do not open the DRM card
+> node
+> themselves, they ask logind, so it is actually likely that the client
+> does not have the file system access to the card node.
+
+Well... I assumed that the client can do this on its own.
+
+>
+> Another problem is that the client has no idea which resources the
+> compositor is willing to lease out. That set of resources could even
+> change at runtime when the compositor output configuration changes,
+> if
+> the compositor has a policy that everything it is not using itself
+> can
+> be leased (I would propose Weston to have this policy).
+
+Right.
+
+>
+> A compositor could even be willing to lease out resources it is
+> using,
+> e.g. plane resources it can fall back from, or a CRTC for an output
+> that will get temporarily disabled if a Lessee wants it. Especially
+> in
+> the latter case, the compositor might ask the user if he is willing
+> to
+> give the output to an app and explaining how he can get his output
+> back
+> in case the app malfunctions (e.g. compositor hotkey to revoke all
+> leases).
+>
+
+Yes.
+
+
+> Both problems could be solved by extending the kms_lease_manager
+> interface to advertise the leasable KMS resources, including enough
+> information to allow the client to make a good guess on e.g. which
+> connectors it might be interested in.
+>
+> Another fun problem is how to pick a CRTC, since CRTCs cannot be
+> assumed to be equal. It's quite possible that the client needs to
+> lease
+> every available CRTC one at a time, attempt modeset, and see if it
+> can
+> drive the connector with the mode it wants. If it doesn't work, try
+> the
+> next available CRTC. Since we probably cannot avoid trial and error
+> completely, it is important to reduce the number of possible
+> combinations as much as possible.
+>
+> Another approach would be to not let the client pick a CRTC on its
+> own.
+> Let the client pick a connector from a list, and have the compositor
+> find a suitable CRTC to go with it.
+
+Alright, if I got this right: the compositor will advertise which
+connectors can be leased.
+Will present that to the client, client will pick one of those. On the
+reply the compositor will determine a valid CRTC to drive that
+connector then will create the lease and send back to the client the
+lease fd.
+
+How will the compositor choose which connectors can be leased? We
+assume that all connectors can be leased?
+
+For a client a unsigned int doesn't really tell anything .... is this
+the panel on my right, the display on my left or the upper panel -- or
+the VR is just hooked up? Do we advertise this to the client as well in
+the form of output names or something equivalent? I guess more general
+question show we present the potential leasable resource(s) in a human
+form? Would that make sense?
+
+The approach with the client choosing which crtc/connector/plane
+somehow assumes that client has a-priory knowledge of which resource
+wants... albeit will all the drawbacks you enumerated before.
+
+>
+>
+> > +  </description>
+> > +
+> > +    <request name="add_connector">
+> > +      <description summary="connector id">
+> > +      Request to add a connector id to current lease request
+> > object.
+> > +      </description>
+> > +      <arg name="id" type="uint" summary="connector id"/>
+> > +    </request>
+> > +
+> > +    <request name="add_crtc">
+> > +      <description summary="crtc id">
+> > +      Request to add a CRTC id to current lease request object.
+> > +      </description>
+> > +      <arg name="id" type="uint" summary="crtc id"/>
+> > +    </request>
+> > +
+> > +    <request name="add_plane">
+> > +      <description summary="plane id">
+> > +      Request to add a plane id to current lease request object.
+> > +      </description>
+> > +      <arg name="id" type="uint" summary="plane id"/>
+> > +    </request>
+>
+> What happens if any of the ids is invalid?
+> I suppose the compositor just fails the lease.
+>
+> Should we not forbid using zero though, because that will always be
+> invalid? In which case we need an error code for an invalid resource
+> id
+> protocol error (enum name="error" in the interface).
+>
+> Adding the same resource twice should be caught too.
+>
+> > +
+> > +    <request name="create">
+> > +      <description summary="create the lease">
+> > +      This request is to be called last to get the lease. Either a
+> > 'created'
+> > +      event in case of success, or 'failed' event in case of
+> > failure is
+> > +      generated.
+> > +      </description>
+>
+> As Daniel suggested before, this request should create a new protocol
+> object that represents the actual lease. All requests and events
+> below
+> would be part of that object's interface instead of
+> kms_lease_request's.
+>
+> Let me call the new protocol object interface kms_lease, in lack of a
+> better name. The lessee ID will not be needed in the protocol at all,
+> it will be represented by the kms_lease protocol object. (Wayland
+> objects are essentially typesafe per-client IDs.)
+>
+> > +    </request>
+> > +
+> > +    <request name="revoke">
+> > +      <description summary="revoke a lease">
+> > +       This asks to revoke a lease using the lessee id previously
+> > given in event
+> > +       created.
+>
+> What happens when a client asks for a revoke?
+>
+> Will it result in a revoked event?
+>
+> What are the requirements a client must have done with the leased DRM
+> resources before it sends this request?
+>
+> What if a client simply closes the DRM fd it got with the lease and
+> destroys this protocol object? Or does it in the opposite order,
+> destroys first and closes then?
+>
+> > +      </description>
+> > +      <arg name="id" type="uint" summary="lessee id"/>
+> > +    </request>
+> > +
+> > +
+> > +    <event name="created">
+> > +    <description summary="lease created successfully">
+> > +	This event indicates that the lease has been created. It
+> > provides the
+> > +	leased fd which the client can use to perform modesetting
+> > and a lessee
+> > +	id to revoke the lease when it has finished with it.
+>
+> How should the compositor have programmed the leased DRM resources
+> before sending this event?
+>
+> My question is related to flicker avoidance (avoid having the CRTC go
+> through a temporary off-state if it was on already), and information
+> leaks (the FB left on the CRTC could be queried and read back by the
+> Lessee.)
+>
+> Should we instruct the compositor to program any CRTCs with FBs that
+> do
+> not contain any sensitive information? How can the compositor ensure
+> those FBs get destroyed after the client has programmed its own FBs?
+>
+> > +    </description>
+> > +	<arg name="fd" type="fd" summary="leased fd"/>
+> > +	<arg name="id" type="uint" summary="lessee id"/>
+> > +    </event>
+> > +
+> > +    <event name="failed">
+> > +    <description summary="drm lease could not be created">
+> > +	This event indicates that the lease could not be
+> > created/revoked.
+>
+> + The client should destroy this object, and possibly try again with
+> a
+>   different set of DRM resources.
+>
+> > +    </description>
+> > +    </event>
+> > +
+> > +    <event name="revoked">
+> > +    <description summary="lease revoked">
+> > +	This event indicates that the lease has been revoked.
+>
+> Does the compositor send this event before or after it has called the
+> revoke ioctl?
+>
+> I would assume after, which means that the client possibly starts
+> hitting KMS errors before it gets this event. That could be worth to
+> note here.
+>
+> On revoke, what happens to the FB on a leased CRTC? Can a compositor
+> query and read it back? In this direction the information leak is
+> probably ok.
+>
+> > +    </description>
+> > +    </event>
+>
+> This interface is missing a destroy request. Interfaces must always
+> have a destroy request unless there is a very good reason to not have
+> one. In any case, every object must be destroyable somehow.
+>
+> > +
+> > +  </interface>
+> > +
+> > +</protocol>
+>
+> Thanks,
+> pq

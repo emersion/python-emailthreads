@@ -1,0 +1,316 @@
+From: ppaalanen at gmail.com (Pekka Paalanen)
+Date: Thu, 31 May 2018 15:38:35 +0300
+Subject: [PATCH wayland-protocols v2] unstable/drm-lease: DRM lease
+ protocol support
+In-Reply-To: <1527683902.2337.10.camel@nxp.com>
+References: <20180124190902.7126-1-marius-cristian.vlad@nxp.com>
+ <20180212145151.30210-1-marius-cristian.vlad@nxp.com>
+ <20180529171002.7a2d3706@eldfell>
+ <1527683902.2337.10.camel@nxp.com>
+Message-ID: <20180531153835.6ad9e559@eldfell>
+
+On Wed, 30 May 2018 12:38:22 +0000
+Marius-cristian Vlad <marius-cristian.vlad at nxp.com> wrote:
+
+> On Tue, 2018-05-29 at 17:10 +0300, Pekka Paalanen wrote:
+> > On Mon, 12 Feb 2018 16:51:51 +0200
+> > Marius Vlad <marius-cristian.vlad at nxp.com> wrote:
+> >
+> > > Simple protocol extension to manage DRM lease. Based on the work by
+> > > Keith
+> > > Packard in [1], respectively [2].
+> > >
+> > > [1] https://cgit.freedesktop.org/mesa/drm/commit/?id=c4171535389d72
+> > > e9135c9615cecd07b346fd6d7e
+> > > [2] https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.
+> > > git/commit/?h=v4.15-rc9&id=62884cd386b876638720ef88374b31a84ca7ee5f
+> > >
+> > > Signed-off-by: Marius Vlad <marius-cristian.vlad at nxp.com>
+> > >
+> > > Changes since v1:
+> > > - added manager: advertise lease capability and manage the lease
+> > > (Daniel Stone)
+> > > - add request(s) for adding connector/crtc/plane to behave more
+> > > like dmabuf (Daniel Stone)
+> > > ---
+> > >  Makefile.am                                  |   1 +
+> > >  unstable/drm-lease/README                    |   4 +
+> > >  unstable/drm-lease/drm-lease-unstable-v1.xml | 150
+> > > +++++++++++++++++++++++++++
+> > >  3 files changed, 155 insertions(+)
+> > >  create mode 100644 unstable/drm-lease/README
+> > >  create mode 100644 unstable/drm-lease/drm-lease-unstable-v1.xml
+> >
+> > Hi Marius,
+> >
+> > it's great to have someone working on this!
+> >
+> > I finally got a chance to look at it. Comments are inline as usual.
+> > Most
+> > of my questions call for an answer in the spec text.
+>
+> Thanks for taking the time to go over this. I have some minor follow-up
+> questions bellow.
+
+Hi Marius,
+
+I have written some pondering as replies to your questions below. I hope
+they make sense.
+
+I had a chat with Keith Packard in IRC about some details of how DRM
+leasing actually works. These details affect the implementations more,
+but there might be something we need to take into account with the
+protocol as well.
+
+These are my notes from the chat:
+
+- When there is a change with DRM leases, a normal DRM hotplug event
+  will be emitted.
+
+- Particularly Lessor needs to listen for hotplug events and re-query
+  the state of all DRM leases. This is how Lessor finds out a lease has
+  been terminated by a Lessee. This needs to happen also on gaining DRM
+  master.
+
+- VT-switching: When the original DRM master (Lessor) drops the master
+  status, all DRM leases it has given out will be temporarily disabled.
+  When Lessor regains DRM master, the disabled leases are automatically
+  reinstated.
+
+- Lessee can tell the difference between a permanent revoke and a
+  temporary disable of a lease by the error it gets from the KMS API
+  (drmModeSetCrtc, drmModePageFlip, drmModeAtomicCommit): EACCESS for
+  temporary disable, and ENOENT for a revoked lease that is not coming
+  back.
+
+- If Lessee gets EACCESS, it should stand by and wait for hotplug
+  events to try again with the hope that the lease comes back.
+
+
+Some random thoughts from me:
+
+- Need to make sure the client has enough information to listen for
+  hotplug events in a multi-card system.
+
+- If the Wayland client disconnects, revoke all its leases.
+  Implementation-wise this is easy as the wl_resource gets
+  destroyed.
+
+- We probably do not want a Wayland event for compositor dropping DRM
+  master, because it would be racy in the client against KMS calls and
+  the client will notice on its own anyway.
+
+- There could be a Wayland event for compositor gaining DRM master, to
+  tell the client to try KMS again now, but it seems redundant: the DRM
+  hotplug event provides the same, and needs to be listened to anyway
+  if the client wants to react to hotplug on its leased connector.
+
+
+> > > diff --git a/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > > b/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > > new file mode 100644
+> > > index 0000000..907efb0
+> > > --- /dev/null
+> > > +++ b/unstable/drm-lease/drm-lease-unstable-v1.xml
+> > > @@ -0,0 +1,150 @@
+> > > +<?xml version="1.0" encoding="UTF-8"?>
+> > > +<protocol name="drm_lease_unstable_v1">
+
+...
+
+> >
+> > To me this sounds like a client needs to first open a DRM card node,
+> > iterate through all the resources (is that even possible if it is not
+> > a
+> > DRM master?), look at the information and guess which ones the
+> > compositor might be willing to lease out, and then through trial and
+> > error maybe find something that will actually be accepted.
+>
+> Indeed, that's how the client demo/example does it now.
+>
+> >
+> > I do not like this plan.
+> >
+> > It assumes that the client can open a DRM card node itself - this is
+> > often not the case. Even display servers do not open the DRM card
+> > node
+> > themselves, they ask logind, so it is actually likely that the client
+> > does not have the file system access to the card node.
+>
+> Well... I assumed that the client can do this on its own.
+
+DRM leasing protocol could be used to allow direct display access from
+application sandboxes.
+
+There is one more problem I forgot about: multiple card nodes.
+How would a client know which card nodes the compositor is using and
+might be able to give out leases for?
+
+It could probably try and probe to see what it can get from DRM card
+nodes directly, but that seems awkward.
+
+A compositor could also be using multiple card nodes. If we have DRM
+resource advertisements as part of this extension, it needs to take
+into account that some resources could be from a different card and
+therefore cannot be paired with some other resources.
+
+> > Another problem is that the client has no idea which resources the
+> > compositor is willing to lease out. That set of resources could even
+> > change at runtime when the compositor output configuration changes,
+> > if
+> > the compositor has a policy that everything it is not using itself
+> > can
+> > be leased (I would propose Weston to have this policy).
+>
+> Right.
+>
+> >
+> > A compositor could even be willing to lease out resources it is
+> > using,
+> > e.g. plane resources it can fall back from, or a CRTC for an output
+> > that will get temporarily disabled if a Lessee wants it. Especially
+> > in
+> > the latter case, the compositor might ask the user if he is willing
+> > to
+> > give the output to an app and explaining how he can get his output
+> > back
+> > in case the app malfunctions (e.g. compositor hotkey to revoke all
+> > leases).
+> >
+>
+> Yes.
+>
+>
+> > Both problems could be solved by extending the kms_lease_manager
+> > interface to advertise the leasable KMS resources, including enough
+> > information to allow the client to make a good guess on e.g. which
+> > connectors it might be interested in.
+> >
+> > Another fun problem is how to pick a CRTC, since CRTCs cannot be
+> > assumed to be equal. It's quite possible that the client needs to
+> > lease
+> > every available CRTC one at a time, attempt modeset, and see if it
+> > can
+> > drive the connector with the mode it wants. If it doesn't work, try
+> > the
+> > next available CRTC. Since we probably cannot avoid trial and error
+> > completely, it is important to reduce the number of possible
+> > combinations as much as possible.
+> >
+> > Another approach would be to not let the client pick a CRTC on its
+> > own.
+> > Let the client pick a connector from a list, and have the compositor
+> > find a suitable CRTC to go with it.
+>
+> Alright, if I got this right: the compositor will advertise which
+> connectors can be leased.
+> Will present that to the client, client will pick one of those. On the
+> reply the compositor will determine a valid CRTC to drive that
+> connector then will create the lease and send back to the client the
+> lease fd.
+
+Yes. If a client wants to lease multiple connectors, I assume it can
+just ask each separately. This does assume that the client is not
+aiming for shared-CRTC clone mode as it would get more CRTCs than it
+needs in that case.
+
+I'm not sure it would be worth the complexity to be able to lease out
+some connectors without CRTCs, the chances of being able to use
+shared-CRTC clone mode are slim and use cases probably hard to find. If
+a use case pops up, we can look at it then.
+
+As for a compositor determining a valid CRTC, it could go as far as
+doing a TEST_ONLY or even a real atomic commit of the CRTC/connector
+with the preferred video mode to ensure it's supposed to work.
+
+> How will the compositor choose which connectors can be leased? We
+> assume that all connectors can be leased?
+
+This would be left as compositor policy.
+
+I would guess that most desktop compositors would lease out only
+connectors that are marked as "non-desktop" or explicitly configured to
+be leasable and not used by the compositor.
+
+For Weston it would be nice to take things further than that, maybe
+even allow leasing connectors that are in use, so that we can
+experiment with CRTC/connector hand-over with leases. If a non-VR
+application, e.g. a 3D game, would want to drive a display directly,
+this is how it would happen. Another problem is how that game would get
+input, but that's irrelevant here.
+
+I'm totally ok with the initial weston implementation only leasing out
+unused resources.
+
+> For a client a unsigned int doesn't really tell anything .... is this
+> the panel on my right, the display on my left or the upper panel -- or
+> the VR is just hooked up? Do we advertise this to the client as well in
+> the form of output names or something equivalent? I guess more general
+> question show we present the potential leasable resource(s) in a human
+> form? Would that make sense?
+>
+> The approach with the client choosing which crtc/connector/plane
+> somehow assumes that client has a-priory knowledge of which resource
+> wants... albeit will all the drawbacks you enumerated before.
+
+Right, the advertisement needs to provide enough information.
+
+How do applications that want to drive a display directly actually pick
+the displays?
+
+I assume the primary use case here are VR compositors, who are only
+looking for HMDs or any "non-desktop" outputs. We need to provide
+enough information to let those be identified. I suppose it would be at
+least:
+- EDID: make
+- EDID: model
+- EDID: serial number
+- physical connector type
+- connection status
+
+The protocol needs to be designed to allow new fields to be added, IOW
+to be able to add new events carrying bits of information not sent
+before, in a backward-compatible manner. The bits of information that
+are not available due to the connector being disconnected etc. could be
+simply left unsent.
+
+Almost all of the above depend on the currently connected monitor,
+which means that they can change at runtime. Therefore hotplug and
+unplug needs to be accounted for, in case an application could take a
+long while (e.g. interactive UI) to choose the connectors it wants.
+
+The secondary use case are all other programs. They could be interested
+in any kind of monitors. They would probably be interested in name and
+description from the xdg_output interface. See:
+https://cgit.freedesktop.org/wayland/wayland-protocols/commit/?id=d296d0760c186e540438174843f3e93849cc4d70
+
+But because the compositor would be primarily leasing out connectors it
+is not using, there is no respective xdg_output, so we should probably
+duplicate the name and description.
+
+Saying anything explicitly about monitor layout is likely useless: if
+the compositor is not using the monitor, it's not part of its layout.
+If a compositor is using a monitor, it could add a word or two about
+the layout in the description.
+
+
+Btw. a compositor should probably send out connector protocol objects,
+not events with connector IDs. That would fit the Wayland object model
+better. There might not be a need to send the actual connector ID at
+all.
+
+If we go with leasing one connector at a time and the compositor
+automatically picking the CRTC for it, a connector protocol object
+could have a request "lease", creating a lease object which then
+delivers the failure or success events.
+
+
+Thanks,
+pq
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: not available
+Type: application/pgp-signature
+Size: 833 bytes
+Desc: OpenPGP digital signature
+URL: <https://lists.freedesktop.org/archives/wayland-devel/attachments/20180531/c356aedb/attachment.sig>

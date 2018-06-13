@@ -38,5 +38,18 @@ class ParseTestCase(unittest.TestCase):
 
 		self.assertEqual(got, want)
 
+	def test_with_multiple_replies(self):
+		patch = self._load_msg_from_file("multiple-replies/patch.eml")
+		reply1 = self._load_msg_from_file("multiple-replies/reply1.eml")
+		reply2 = self._load_msg_from_file("multiple-replies/reply2.eml")
+		reply3 = self._load_msg_from_file("multiple-replies/reply3.eml")
+
+		thread = emailreview.parse(reply3, [patch, reply1, reply2])
+
+		got = self._normalize(str(thread))
+		want = self._read_file("multiple-replies/output3.txt")
+
+		self.assertEqual(got, want)
+
 if __name__ == '__main__':
 	unittest.main()

@@ -1,0 +1,208 @@
+From: marius-cristian.vlad at nxp.com (Marius Vlad)
+Date: Mon, 12 Feb 2018 16:51:51 +0200
+Subject: [PATCH wayland-protocols v2] unstable/drm-lease: DRM lease protocol
+ support
+In-Reply-To: <20180124190902.7126-1-marius-cristian.vlad@nxp.com>
+References: <20180124190902.7126-1-marius-cristian.vlad@nxp.com>
+Message-ID: <20180212145151.30210-1-marius-cristian.vlad@nxp.com>
+Content-Type: text/plain; charset=ISO-8859-1
+
+Simple protocol extension to manage DRM lease. Based on the work by Keith
+Packard in [1], respectively [2].
+
+[1] https://cgit.freedesktop.org/mesa/drm/commit/?id=c4171535389d72e9135c9615cecd07b346fd6d7e
+[2] https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?h=v4.15-rc9&id=62884cd386b876638720ef88374b31a84ca7ee5f
+
+Signed-off-by: Marius Vlad <marius-cristian.vlad at nxp.com>
+
+Changes since v1:
+- added manager: advertise lease capability and manage the lease (Daniel Stone)
+- add request(s) for adding connector/crtc/plane to behave more like dmabuf (Daniel Stone)
+---
+ Makefile.am                                  |   1 +
+ unstable/drm-lease/README                    |   4 +
+ unstable/drm-lease/drm-lease-unstable-v1.xml | 150 +++++++++++++++++++++++++++
+ 3 files changed, 155 insertions(+)
+ create mode 100644 unstable/drm-lease/README
+ create mode 100644 unstable/drm-lease/drm-lease-unstable-v1.xml
+
+diff --git a/Makefile.am b/Makefile.am
+index 4b9a901..4f6a874 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -2,6 +2,7 @@ unstable_protocols =								\
+ 	unstable/pointer-gestures/pointer-gestures-unstable-v1.xml		\
+ 	unstable/fullscreen-shell/fullscreen-shell-unstable-v1.xml		\
+ 	unstable/linux-dmabuf/linux-dmabuf-unstable-v1.xml			\
++	unstable/drm-lease/drm-lease-unstable-v1.xml				\
+ 	unstable/text-input/text-input-unstable-v1.xml				\
+ 	unstable/input-method/input-method-unstable-v1.xml			\
+ 	unstable/xdg-shell/xdg-shell-unstable-v5.xml				\
+diff --git a/unstable/drm-lease/README b/unstable/drm-lease/README
+new file mode 100644
+index 0000000..a25600c
+--- /dev/null
++++ b/unstable/drm-lease/README
+@@ -0,0 +1,4 @@
++Linux DRM lease
++
++Maintainers:
++Marius Vlad <marius-cristian.vlad at nxp.com>
+diff --git a/unstable/drm-lease/drm-lease-unstable-v1.xml b/unstable/drm-lease/drm-lease-unstable-v1.xml
+new file mode 100644
+index 0000000..907efb0
+--- /dev/null
++++ b/unstable/drm-lease/drm-lease-unstable-v1.xml
+@@ -0,0 +1,150 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="drm_lease_unstable_v1">
++
++  <copyright>
++    Copyright 2018 NXP
++
++    Permission is hereby granted, free of charge, to any person obtaining a
++    copy of this software and associated documentation files (the "Software"),
++    to deal in the Software without restriction, including without limitation
++    the rights to use, copy, modify, merge, publish, distribute, sublicense,
++    and/or sell copies of the Software, and to permit persons to whom the
++    Software is furnished to do so, subject to the following conditions:
++
++    The above copyright notice and this permission notice (including the next
++    paragraph) shall be included in all copies or substantial portions of the
++    Software.
++
++    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++    DEALINGS IN THE SOFTWARE.
++  </copyright>
++
++  <interface name="zwp_kms_lease_manager_v1" version="1">
++    <description summary="lease manager">
++      This interface makes use of DRM lease written by Keith Packard.
++
++      A DRM master can create another DRM master and ``lease'' resources it has
++      control over to the new DRM master. Once leased, resources can not be
++      controlled by the owner unless the owner cancels the lease, or the new
++      DRM master is closed.
++
++      A lease is a contract between the Lessor (DRM master which has leased out
++      resources to one or more other DRM masters) and a Lessee
++      (DRM master which controls resources leased from another DRM master). This
++      contract specifies which resources may be controlled by the Lessee.
++
++      The Lessee can issue modesetting/page-flipping atomic operations etc.,
++      just like a Lesor using the leased file-descriptor passed by the Lesor.
++
++      Besides the leased file-description, an integer is used to uniquely
++      identify a Lessee within the tree of DRM masters descending from a single
++      Owner. Once the Lessee has finished with the resources it had used, the
++      Lessee ID can be used to revoke that lease.
++
++      Warning! The protocol described in this file is experimental and
++      backward incompatible changes may be made. Backward compatible changes
++      may be added together with the corresponding interface version bump.
++      Backward incompatible changes are done by bumping the version number in
++      the protocol and interface names and resetting the interface version.
++      Once the protocol is to be declared stable, the 'z' prefix and the
++      version number in the protocol and interface names are removed and the
++      interface version number is reset.
++    </description>
++
++    <request name="destroy" type="destructor">
++      <description summary="destroys the manager">
++      Destroys the lease manager object.
++      </description>
++    </request>
++
++    <request name="create_lease_req">
++      <description summary="create a temporary object for managing the lease">
++      Create a lease request object to manage the lease. All further interaction
++      is achived using this object. Returns a zwp_kms_lease_request_v1.
++      </description>
++      <arg name="params_id" type="new_id" interface="zwp_kms_lease_request_v1"
++	   summary="the new temporary"/>
++    </request>
++
++  </interface>
++
++  <interface name="zwp_kms_lease_request_v1" version="1">
++  <description summary="lease request object">
++      Typical usage is to create this request lease object using the
++      'zwp_kms_lease_manager_v1', then call 'add_*' requests to add a connector,
++      crtc (and plane) id.
++
++      At the end, use 'create' request to actually create the lease. The client
++      is responsible for finding a suitable combination of connector/crtc/plane
++      to pass. This can be achived by going over all connected connectors and
++      and determine if a lease can be created.
++  </description>
++
++    <request name="add_connector">
++      <description summary="connector id">
++      Request to add a connector id to current lease request object.
++      </description>
++      <arg name="id" type="uint" summary="connector id"/>
++    </request>
++
++    <request name="add_crtc">
++      <description summary="crtc id">
++      Request to add a CRTC id to current lease request object.
++      </description>
++      <arg name="id" type="uint" summary="crtc id"/>
++    </request>
++
++    <request name="add_plane">
++      <description summary="plane id">
++      Request to add a plane id to current lease request object.
++      </description>
++      <arg name="id" type="uint" summary="plane id"/>
++    </request>
++
++    <request name="create">
++      <description summary="create the lease">
++      This request is to be called last to get the lease. Either a 'created'
++      event in case of success, or 'failed' event in case of failure is
++      generated.
++      </description>
++    </request>
++
++    <request name="revoke">
++      <description summary="revoke a lease">
++       This asks to revoke a lease using the lessee id previously given in event
++       created.
++      </description>
++      <arg name="id" type="uint" summary="lessee id"/>
++    </request>
++
++
++    <event name="created">
++    <description summary="lease created successfully">
++	This event indicates that the lease has been created. It provides the
++	leased fd which the client can use to perform modesetting and a lessee
++	id to revoke the lease when it has finished with it.
++    </description>
++	<arg name="fd" type="fd" summary="leased fd"/>
++	<arg name="id" type="uint" summary="lessee id"/>
++    </event>
++
++    <event name="failed">
++    <description summary="drm lease could not be created">
++	This event indicates that the lease could not be created/revoked.
++    </description>
++    </event>
++
++    <event name="revoked">
++    <description summary="lease revoked">
++	This event indicates that the lease has been revoked.
++    </description>
++    </event>
++
++  </interface>
++
++</protocol>
+--
+2.9.3
