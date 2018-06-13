@@ -1,3 +1,3 @@
 #!/bin/sh
 
-python3 -m unittest discover -v
+python3 -m pytest test
