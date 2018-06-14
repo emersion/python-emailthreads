@@ -1,6 +1,6 @@
-# emailreview
+# emailthreads
 
-Python library to parse and format email reviews.
+Python library to parse and format email threads.
 
 ## License
 
