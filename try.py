@@ -2,7 +2,8 @@
 
 import mailbox
 
-from emailthreads import *
+from util import *
+from threads import *
 
 def get_message_references(msg):
 	# TODO: handle spaces in message IDs
