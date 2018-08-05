@@ -2,10 +2,12 @@ import re
 import sys
 from email.message import EmailMessage
 
-from util import *
-from quotes import *
+from .util import *
+from .quotes import *
 
 def get_message_by_id(msgs, msg_id):
+	if msg_id is None or msg_id == "":
+		return None
 	# TODO: handle weird brackets stuff
 	for msg in msgs:
 		if msg["message-id"] == msg_id:
@@ -119,15 +121,27 @@ class Thread:
 
 		return "\n".join(repr_lines)
 
-def parse(msg, refs=[]):
-	# For some reason Python strips "Re:" prefixes
-	subject = flatten_header_field(msg["subject"])
+def build_message_tree(messages):
+	heads = []
+	replies = []
 
-	in_reply_to = get_message_by_id(refs, msg['in-reply-to'])
-	if in_reply_to is None or flatten_header_field(in_reply_to["subject"]) != subject:
-		text = get_text(msg)
-		text_lines = text.splitlines()
-		return Thread(text_lines, msg, (0, len(text_lines)))
+	for msg in messages:
+		in_reply_to = get_message_by_id(messages, msg['in-reply-to'])
+		if in_reply_to is None:
+			heads.append(msg)
+		else:
+			replies.append((msg, in_reply_to))
+
+	if len(heads) != 1:
+		raise Exception("expected exactly one head message, got " + str(len(heads)))
+	head = heads[0]
+
+	replies = sorted(replies, key=lambda reply: reply[0]['date'])
+
+	return (head, replies)
+
+def parse_reply(msg, in_reply_to, thread):
+	subject = flatten_header_field(msg["subject"])
 
 	blocks = parse_blocks(msg)
 	blocks = trim_quotes_footer(blocks)
@@ -135,8 +149,6 @@ def parse(msg, refs=[]):
 	blocks = trim_noisy_text(blocks)
 	# print("\n".join([str(block) for block in blocks]))
 	blocks = merge_blocks(blocks)
-
-	thread = parse(in_reply_to, refs)
 
 	last_quote = None
 	for block in blocks:
@@ -160,5 +172,17 @@ def parse(msg, refs=[]):
 				thread.children.append(c)
 		elif isinstance(block, Quote):
 			last_quote = block
+
+	return thread
+
+def parse(messages):
+	(head, replies) = build_message_tree(messages)
+
+	text = get_text(head)
+	text_lines = text.splitlines()
+	thread = Thread(text_lines, head, (0, len(text_lines)))
+
+	for (msg, in_reply_to) in replies:
+		parse_reply(msg, in_reply_to, thread)
 
 	return thread

@@ -2,7 +2,7 @@ import re
 import sys
 from email.message import EmailMessage
 
-from util import *
+from .util import *
 
 def trim_empty_lines(block):
 	start = 0

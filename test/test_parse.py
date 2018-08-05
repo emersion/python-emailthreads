@@ -31,7 +31,7 @@ class ParseTestCase(unittest.TestCase):
 		patch = self._load_msg_from_file("scissor/patch.eml")
 		reply = self._load_msg_from_file("scissor/reply.eml")
 
-		thread = emailthreads.parse(reply, [patch])
+		thread = emailthreads.parse([patch, reply])
 
 		got = self._normalize(str(thread))
 		want = self._read_file("scissor/output.txt")
@@ -44,7 +44,7 @@ class ParseTestCase(unittest.TestCase):
 		reply2 = self._load_msg_from_file("multiple-replies/reply2.eml")
 		reply3 = self._load_msg_from_file("multiple-replies/reply3.eml")
 
-		thread = emailthreads.parse(reply3, [patch, reply1, reply2])
+		thread = emailthreads.parse([patch, reply1, reply2, reply3])
 
 		got = self._normalize(str(thread))
 		want = self._read_file("multiple-replies/output3.txt")
