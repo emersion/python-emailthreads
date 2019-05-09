@@ -60,8 +60,6 @@ def parse_blocks(msg):
 	block_lines = []
 	was_quoted = False
 	for (i, line) in enumerate(text_lines):
-		line = line.strip()
-
 		line_quoted = line.startswith(">")
 		if line_quoted:
 			line = line[1:].lstrip()
