@@ -1,0 +1,10 @@
+image: alpine/edge
+packages:
+- python3
+- py3-pytest
+sources:
+- https://git.sr.ht/~emersion/python-emailthreads
+tasks:
+  - test: |
+      cd python-emailthreads
+      python3 -m pytest test
