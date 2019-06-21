@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+recursive-include test/data *.eml *.txt
+recursive-include test *.py
+
+prune .editorconfig
+prune .build.yml
