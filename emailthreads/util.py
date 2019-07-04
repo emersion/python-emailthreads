@@ -36,7 +36,7 @@ def normalize_whitespace(text):
 
 def get_text(msg):
 	text_part = get_text_part(msg)
-	text = text_part.get_payload(decode=True).decode('utf-8')
+	text = text_part.get_payload(decode=True).decode('utf-8', 'replace')
 	text = normalize_whitespace(text)
 	return text
 
