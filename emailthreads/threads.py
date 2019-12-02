@@ -1,5 +1,6 @@
 import re
 import sys
+import email
 from email.message import EmailMessage
 
 from .util import *
@@ -136,7 +137,8 @@ def build_message_tree(messages):
 		raise Exception("expected exactly one head message, got " + str(len(heads)))
 	head = heads[0]
 
-	replies = sorted(replies, key=lambda reply: reply[0]['date'])
+	# TODO: topological sort
+	replies = sorted(replies, key=lambda reply: email.utils.parsedate(reply[0]['date']))
 
 	return (head, replies)
 
