@@ -7,7 +7,7 @@ from email import message_from_file
 class ParseTestCase(unittest.TestCase):
 	def _normalize(self, output):
 		output = output.strip()
-		lines = "\n".split(output)
+		lines = output.split("\n")
 		lines = [l.strip() for l in lines]
 		return "\n".join(lines)
 
