@@ -12,6 +12,10 @@ To run the tests, execute this command:
 
     python3 -m pytest test
 
+Given some raw messages, you can parse a thread from the CLI like so:
+
+    python3 -m emailthreads *.eml
+
 ## License
 
 MIT
