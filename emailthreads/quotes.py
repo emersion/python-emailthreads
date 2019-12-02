@@ -41,7 +41,7 @@ class Quote:
 	def __repr__(self):
 		s = "["
 		if self.parent_region is not None:
-			s += "quote at " + str(self.parent_region[0]) + "-" + str(self.parent_region[1] - 1)
+			s += "quote at " + str(self.parent_region[0]) + "-" + str(self.parent_region[1])
 		else:
 			s += "unknown quote"
 
