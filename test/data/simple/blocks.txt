@@ -1,0 +1,9 @@
+[text This is a standalone line.]
+[quote at 0-1 This is the first line.]
+[text This is a reply to the first line.]
+[quote at 2-3 This is the second line.]
+[text This is a reply to the second line.]
+[quote at 4-7 This is the third line.
+
+This is the fourth line.]
+[text This is a reply to the third and fourth lines.]
