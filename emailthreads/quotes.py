@@ -86,8 +86,9 @@ def parse_blocks(msg):
 	return blocks
 
 def match_block_at(ref_block, block, index):
-	start = max(0, index - len(block))
-	ref_block = list(ref_block[start:index])
+	end = index + 1
+	start = max(0, end - len(block))
+	ref_block = list(ref_block[start:end])
 
 	n_lines = 0
 	for line in reversed(block):
@@ -117,7 +118,8 @@ def find_block(ref_block, block, start=0):
 		match_len = match_block_at(ref_block, block, i)
 		# TODO: require to match at least a % of the block
 		if match_len > 0:
-			regions.append((i - match_len, i))
+			j = i - match_len + 1
+			regions.append((j, j + match_len))
 
 	return regions
 
