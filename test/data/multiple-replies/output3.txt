@@ -40,45 +40,45 @@ Changes since v1:
 | | | These are my notes from the chat:
 | | |
 | | | - When there is a change with DRM leases, a normal DRM hotplug event
-| | | will be emitted.
+| | |   will be emitted.
 | | |
 | | | - Particularly Lessor needs to listen for hotplug events and re-query
-| | | the state of all DRM leases. This is how Lessor finds out a lease has
-| | | been terminated by a Lessee. This needs to happen also on gaining DRM
-| | | master.
+| | |   the state of all DRM leases. This is how Lessor finds out a lease has
+| | |   been terminated by a Lessee. This needs to happen also on gaining DRM
+| | |   master.
 | | |
 | | | - VT-switching: When the original DRM master (Lessor) drops the master
-| | | status, all DRM leases it has given out will be temporarily disabled.
-| | | When Lessor regains DRM master, the disabled leases are automatically
-| | | reinstated.
+| | |   status, all DRM leases it has given out will be temporarily disabled.
+| | |   When Lessor regains DRM master, the disabled leases are automatically
+| | |   reinstated.
 | | |
 | | | - Lessee can tell the difference between a permanent revoke and a
-| | | temporary disable of a lease by the error it gets from the KMS API
-| | | (drmModeSetCrtc, drmModePageFlip, drmModeAtomicCommit): EACCESS for
-| | | temporary disable, and ENOENT for a revoked lease that is not coming
-| | | back.
+| | |   temporary disable of a lease by the error it gets from the KMS API
+| | |   (drmModeSetCrtc, drmModePageFlip, drmModeAtomicCommit): EACCESS for
+| | |   temporary disable, and ENOENT for a revoked lease that is not coming
+| | |   back.
 | | |
 | | | - If Lessee gets EACCESS, it should stand by and wait for hotplug
-| | | events to try again with the hope that the lease comes back.
+| | |   events to try again with the hope that the lease comes back.
 | | |
 | | |
 | | | Some random thoughts from me:
 | | |
 | | | - Need to make sure the client has enough information to listen for
-| | | hotplug events in a multi-card system.
+| | |   hotplug events in a multi-card system.
 | | |
 | | | - If the Wayland client disconnects, revoke all its leases.
-| | | Implementation-wise this is easy as the wl_resource gets
-| | | destroyed.
+| | |   Implementation-wise this is easy as the wl_resource gets
+| | |   destroyed.
 | | |
 | | | - We probably do not want a Wayland event for compositor dropping DRM
-| | | master, because it would be racy in the client against KMS calls and
-| | | the client will notice on its own anyway.
+| | |   master, because it would be racy in the client against KMS calls and
+| | |   the client will notice on its own anyway.
 | | |
 | | | - There could be a Wayland event for compositor gaining DRM master, to
-| | | tell the client to try KMS again now, but it seems redundant: the DRM
-| | | hotplug event provides the same, and needs to be listened to anyway
-| | | if the client wants to react to hotplug on its leased connector.
+| | |   tell the client to try KMS again now, but it seems redundant: the DRM
+| | |   hotplug event provides the same, and needs to be listened to anyway
+| | |   if the client wants to react to hotplug on its leased connector.
 
 diff --git a/Makefile.am b/Makefile.am
 index 4b9a901..4f6a874 100644
@@ -183,7 +183,7 @@ index 0000000..907efb0
 +      Destroys the lease manager object.
 [inline thread by ppaalanen at gmail.com (Pekka Paalanen) at Tue, 29 May 2018 17:10:02 +0300]
 | + This has no effect on any remaining objects created through this
-| interface.
+|   interface.
 +      </description>
 +    </request>
 +
@@ -481,7 +481,7 @@ index 0000000..907efb0
 +	This event indicates that the lease could not be created/revoked.
 [inline thread by ppaalanen at gmail.com (Pekka Paalanen) at Tue, 29 May 2018 17:10:02 +0300]
 | + The client should destroy this object, and possibly try again with a
-| different set of DRM resources.
+|   different set of DRM resources.
 +    </description>
 +    </event>
 [inline thread by ppaalanen at gmail.com (Pekka Paalanen) at Tue, 29 May 2018 17:10:02 +0300]
