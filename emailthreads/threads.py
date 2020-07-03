@@ -6,12 +6,21 @@ from email.message import EmailMessage
 from .util import *
 from .quotes import *
 
-def get_message_by_id(msgs, msg_id):
-	if msg_id is None or msg_id == "":
+def canonical_msg_id(msg_id):
+	if msg_id == None:
+		return None
+	msg_id = str(msg_id).strip()
+	if msg_id == "":
 		return None
 	# TODO: handle weird brackets stuff
+	return msg_id
+
+def get_message_by_id(msgs, msg_id):
+	msg_id = canonical_msg_id(msg_id)
+	if msg_id == None:
+		return None
 	for msg in msgs:
-		if msg["message-id"] == msg_id:
+		if canonical_msg_id(msg["message-id"]) == msg_id:
 			return msg
 	return None
 
